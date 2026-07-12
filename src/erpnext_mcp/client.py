@@ -102,7 +102,7 @@ class ERPNextClient:
                         error_msg = " | ".join(parsed_msgs)
                 except Exception:
                     error_msg = f"The backend returned a {response.status_code} status code."
-                raise Exception(f"ERPNext API Error ({response.status_code}): {error_msg}") from None
+                raise ValueError(f"ERPNext API Error ({response.status_code}): {error_msg}") from None
             
         json_response = json.loads(body)
         if "data" in json_response:

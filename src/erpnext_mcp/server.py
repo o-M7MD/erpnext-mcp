@@ -109,7 +109,7 @@ def validate_input_fields(doctype: str, fields: list = None, filters: list = Non
                     raise ValueError(f"Filtering on sensitive field '{field_name}' is blocked by security policy.")
 
 # C7 & H9: Write-side field validation to prevent overriding system fields
-FORBIDDEN_WRITE_FIELDS = {"doctype", "owner", "modified_by", "creation", "modified", "docstatus", "idx", "name", "parent", "parenttype", "parentfield"}
+FORBIDDEN_WRITE_FIELDS = {"doctype", "owner", "modified_by", "creation", "modified", "idx", "name", "parent", "parenttype", "parentfield"}
 
 def validate_write_data(data: dict):
     for key in FORBIDDEN_WRITE_FIELDS:

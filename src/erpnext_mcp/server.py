@@ -387,18 +387,15 @@ def main():
                 READABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in read_docs}
                 WRITABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in write_docs}
                 
-                # Save to disk atomically
-                import tempfile
+                # Save to disk
                 with open(CONFIG_PATH, "r") as f:
                     current_config = json.load(f)
                 
                 current_config["readable_doctypes"] = list(READABLE_DOCTYPES)
                 current_config["writable_doctypes"] = list(WRITABLE_DOCTYPES)
                 
-                with tempfile.NamedTemporaryFile('w', dir=os.path.dirname(CONFIG_PATH), delete=False) as tf:
-                    json.dump(current_config, tf, indent=4)
-                    tempname = tf.name
-                os.replace(tempname, CONFIG_PATH)
+                with open(CONFIG_PATH, "w") as f:
+                    json.dump(current_config, f, indent=4)
                     
                 return JSONResponse({"status": "ok"})
                 

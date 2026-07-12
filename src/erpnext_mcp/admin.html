@@ -546,27 +546,27 @@
             const disableIndividual = !isWildcardRow && isWildcardRead;
             const disableIndividualWrite = !isWildcardRow && isWildcardWrite;
 
-            card.innerHTML = \`
-                <div class="doctype-header" style="\${colorStyle}">
-                    \${nameDisplay}
+            card.innerHTML = `
+                <div class="doctype-header" style="${colorStyle}">
+                    ${nameDisplay}
                 </div>
                 <div class="toggles">
                     <label class="toggle-group">
                         <div class="toggle">
-                            <input type="checkbox" class="read-toggle" \${canRead ? 'checked' : ''} \${disableIndividual ? 'disabled' : ''}>
+                            <input type="checkbox" class="read-toggle" ${canRead ? 'checked' : ''} ${disableIndividual ? 'disabled' : ''}>
                             <span class="slider"></span>
                         </div>
                         Read
                     </label>
                     <label class="toggle-group">
                         <div class="toggle">
-                            <input type="checkbox" class="write-toggle" \${canWrite ? 'checked' : ''} \${disableIndividualWrite ? 'disabled' : ''}>
+                            <input type="checkbox" class="write-toggle" ${canWrite ? 'checked' : ''} ${disableIndividualWrite ? 'disabled' : ''}>
                             <span class="slider"></span>
                         </div>
                         Write
                     </label>
                 </div>
-            \`;
+            `;
 
             // Interaction logic
             const readToggle = card.querySelector('.read-toggle');
@@ -625,7 +625,7 @@
         document.getElementById('toast-message').textContent = message;
         document.getElementById('toast-icon').textContent = type === 'success' ? '✓' : '✕';
         
-        toast.className = \`toast \${type} show\`;
+        toast.className = `toast ${type} show`;
         
         clearTimeout(toastTimeout);
         toastTimeout = setTimeout(() => {

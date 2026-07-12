@@ -133,6 +133,48 @@ def format_error(e: Exception) -> str:
         return f"Error: {str(e)}"
     return "Error: An internal server error occurred. Check server logs."
 
+@mcp.resource("frappe://schema/{doctype}")
+async def erpnext_schema_resource(doctype: str) -> str:
+    """Returns the token-efficient schema blueprint for a given DocType."""
+    try:
+        logger.info(f"Resource call: schema | doctype={doctype}")
+        # Ensure they have at least read access to look up the schema
+        check_doctype_access(doctype, "READ")
+        
+        client = await get_client()
+        data = await client.get_doc("DocType", doctype)
+        
+        fields = data.get("fields", [])
+        
+        lines = [f"# Schema: {doctype}"]
+        if data.get("description"):
+            lines.append(f"**Description:** {data['description']}")
+        lines.append("")
+        lines.append("| Field Name | Label | Type | Required | Options |")
+        lines.append("|---|---|---|---|---|")
+        
+        for f in fields:
+            ftype = f.get("fieldtype", "")
+            if ftype in ["Section Break", "Column Break", "Tab Break", "HTML"]:
+                continue
+                
+            fname = f.get("fieldname", "")
+            if not fname or fname in FORBIDDEN_WRITE_FIELDS or any(s in fname.lower() for s in SENSITIVE_KEYWORDS):
+                continue
+                
+            label = str(f.get("label", "") or "").replace("|", "\\|")
+            reqd = "Yes" if f.get("reqd") else "No"
+            options = str(f.get("options", "") or "").replace("\n", " ").replace("|", "\\|")
+            if len(options) > 60:
+                options = options[:57] + "..."
+                
+            lines.append(f"| `{fname}` | {label} | {ftype} | {reqd} | {options} |")
+            
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Error in schema resource: {e}", exc_info=True)
+        return format_error(e)
+
 @mcp.tool()
 async def erpnext_get_list(doctype: str, filters: list = None, fields: list = None, limit: int = 1000) -> str:
     try:

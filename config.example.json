@@ -1,0 +1,20 @@
+{
+  "readable_doctypes": [
+    "Customer",
+    "Item",
+    "Sales Invoice",
+    "Task"
+  ],
+  "writable_doctypes": [
+    "Task",
+    "Customer"
+  ],
+  "deletable_doctypes": [],
+  "allowed_methods": [
+    "erpnext.api.get_item_price"
+  ],
+  "mcp_tokens": [
+    "REPLACE_WITH_SECURE_TOKEN_1",
+    "REPLACE_WITH_SECURE_TOKEN_2"
+  ]
+}

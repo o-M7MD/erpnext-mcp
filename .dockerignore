@@ -1,0 +1,10 @@
+.git
+.env
+config.json
+config.example.json
+.env.example
+output.txt
+test_fuzz.py
+*.md
+__pycache__
+venv/

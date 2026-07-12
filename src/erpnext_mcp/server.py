@@ -39,11 +39,12 @@ WRITABLE_DOCTYPES = {d.lower() for d in config.get("writable_doctypes", [])}
 DELETABLE_DOCTYPES = {d.lower() for d in config.get("deletable_doctypes", [])}
 ALLOWED_METHODS = set(config.get("allowed_methods", []))
 MCP_TOKENS = set(config.get("mcp_tokens", []))
+ADMIN_TOKENS = set(config.get("admin_tokens", MCP_TOKENS))
 
 if not READABLE_DOCTYPES and not WRITABLE_DOCTYPES:
     logger.warning("WARNING: No doctypes are configured for read or write. All requests will be denied.")
 
-unknown_keys = set(config.keys()) - {"readable_doctypes", "writable_doctypes", "deletable_doctypes", "allowed_methods", "mcp_tokens", "allowed_doctypes"}
+unknown_keys = set(config.keys()) - {"readable_doctypes", "writable_doctypes", "deletable_doctypes", "allowed_methods", "mcp_tokens", "admin_tokens", "allowed_doctypes"}
 if unknown_keys:
     logger.warning(f"Unknown config keys detected (possible typo): {unknown_keys}")
 
@@ -309,8 +310,11 @@ def main():
                     timestamps.append(now)
                     RATE_LIMIT_DICT[ip] = timestamps
                     
-                    if not MCP_TOKENS:
-                        logger.error("CRITICAL: Auth is enabled but MCP_TOKENS is empty. Failing closed.")
+                    is_admin_route = request.url.path.startswith("/api/admin/")
+                    valid_tokens = ADMIN_TOKENS if is_admin_route else MCP_TOKENS
+                    
+                    if not valid_tokens:
+                        logger.error("CRITICAL: Token list is empty. Failing closed.")
                         return JSONResponse({"detail": "Server configuration error: No valid tokens defined."}, status_code=500)
                     
                     auth_header = request.headers.get("Authorization", "")
@@ -319,7 +323,7 @@ def main():
                     
                     token = auth_header[7:].strip().encode('utf-8')
                     is_valid = False
-                    for valid_token in MCP_TOKENS:
+                    for valid_token in valid_tokens:
                         if hmac.compare_digest(token, valid_token.encode('utf-8')):
                             is_valid = True
                             break
@@ -383,15 +387,18 @@ def main():
                 READABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in read_docs}
                 WRITABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in write_docs}
                 
-                # Save to disk
+                # Save to disk atomically
+                import tempfile
                 with open(CONFIG_PATH, "r") as f:
                     current_config = json.load(f)
                 
                 current_config["readable_doctypes"] = list(READABLE_DOCTYPES)
                 current_config["writable_doctypes"] = list(WRITABLE_DOCTYPES)
                 
-                with open(CONFIG_PATH, "w") as f:
-                    json.dump(current_config, f, indent=4)
+                with tempfile.NamedTemporaryFile('w', dir=os.path.dirname(CONFIG_PATH), delete=False) as tf:
+                    json.dump(current_config, tf, indent=4)
+                    tempname = tf.name
+                os.replace(tempname, CONFIG_PATH)
                     
                 return JSONResponse({"status": "ok"})
                 

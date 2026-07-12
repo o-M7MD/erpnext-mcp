@@ -5,7 +5,8 @@ services:
     ports:
       - "8000"
     volumes:
-      - ./config.json:/app/config.json:ro
+      - ./config_prod.json:/app/config.json
+      - ./.env.prod:/app/.env
     env_file:
       - .env
     healthcheck:

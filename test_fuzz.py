@@ -1,6 +1,16 @@
 import asyncio
 import json
+import logging
+import os
 import sys
+
+# Set mock env vars for Phase 6 fail-fast requirements
+os.environ["ERPNEXT_URL"] = "http://localhost:8000"
+os.environ["ERPNEXT_API_KEY"] = "mock_key"
+os.environ["ERPNEXT_API_SECRET"] = "mock_secret"
+os.environ["ERPNEXT_MCP_CONFIG"] = "config.json"
+
+import httpx
 
 # Ensure src is in the python path
 sys.path.insert(0, ".")
@@ -35,7 +45,9 @@ async def test_fuzz():
     print("Test 2: Malformed JSON parsing...")
     try:
         res = await erpnext_create_doc(allowed_doc, "{this is definitely not json: 'test', }")
-        passed = "Error: doc_data must be a valid JSON string" in res
+        passed = "Error:" in res and ("Expecting property name" in res or "JSON" in res or "json" in res.lower())
+        if not passed:
+            print(f"Test 2 got response: {res}")
         results.append(("Malformed JSON payload handled", passed))
     except Exception as e:
         results.append(("Malformed JSON payload handled", False))

@@ -19,6 +19,9 @@ WORKDIR /app
 COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Copy only the built package (installed in site-packages by pip)
 # Actually, since it's installed via wheel, the package is already in site-packages
 # We don't need to copy src/ again.

@@ -6,12 +6,17 @@ from typing import Optional, Dict, Any, List
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 def sanitize_path_component(value: str, label: str) -> str:
-    # Use a strict regex allowlist to prevent injection, path traversal, null bytes, etc.
     # Allowed: alphanumeric, space, underscore, dot, hyphen
     if not value or not re.match(r'^[a-zA-Z0-9 _.\-]+$', str(value)):
         raise ValueError(f"Invalid {label}: contains forbidden characters.")
     if ".." in str(value):
         raise ValueError(f"Invalid {label}: contains forbidden characters.")
+    return str(value)
+
+def validate_method_path(value: str) -> str:
+    # H5: Specific sanitizer for dotted method paths
+    if not value or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_.]*$', str(value)):
+        raise ValueError("Invalid method path: contains forbidden characters.")
     return str(value)
 
 class ERPNextClient:
@@ -31,7 +36,6 @@ class ERPNextClient:
             "Content-Type": "application/json"
         }
         
-        # Connection pooling and strict timeouts
         self.client = httpx.AsyncClient(
             headers=self.headers, 
             base_url=f"{self.url}/api/",
@@ -45,7 +49,12 @@ class ERPNextClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException, httpx.ReadError, httpx.WriteError))
+        # H2: Handle stale keep-alive connections
+        retry=retry_if_exception_type((
+            httpx.ConnectError, httpx.TimeoutException, 
+            httpx.ReadError, httpx.WriteError,
+            httpx.RemoteProtocolError, httpx.PoolTimeout
+        ))
     )
     async def _request(self, method: str, endpoint: str, params: dict = None, data: dict = None) -> Any:
         kwargs = {}
@@ -57,25 +66,32 @@ class ERPNextClient:
         if data:
             kwargs["json"] = data
             
-        response = await self.client.request(method, endpoint, **kwargs)
-        
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # Mask internal details from the error response to prevent leaking stack traces
-            error_msg = "Unknown error"
+        # H3: Use stream to check Content-Length before downloading full response
+        async with self.client.stream(method, endpoint, **kwargs) as response:
             try:
-                error_json = response.json()
-                if "_server_messages" in error_json:
-                    msgs = json.loads(error_json["_server_messages"])
-                    parsed_msgs = [json.loads(m).get("message", m) for m in msgs]
-                    error_msg = " | ".join(parsed_msgs)
-            except Exception:
-                # Fallback to generic status message without exposing traceback HTML or SQL queries
-                error_msg = f"The backend returned a {response.status_code} status code."
-            raise Exception(f"ERPNext API Error ({response.status_code}): {error_msg}") from None
+                response.raise_for_status()
+                
+                content_length = int(response.headers.get("Content-Length", 0))
+                if content_length > 5_000_000:
+                    raise ValueError(f"Response size ({content_length} bytes) exceeds 5MB limit.")
+                    
+                body = await response.aread()
+                
+            except httpx.HTTPStatusError as e:
+                # Mask internal details from the error response
+                await response.aread()
+                error_msg = "Unknown error"
+                try:
+                    error_json = response.json()
+                    if "_server_messages" in error_json:
+                        msgs = json.loads(error_json["_server_messages"])
+                        parsed_msgs = [json.loads(m).get("message", m) for m in msgs]
+                        error_msg = " | ".join(parsed_msgs)
+                except Exception:
+                    error_msg = f"The backend returned a {response.status_code} status code."
+                raise Exception(f"ERPNext API Error ({response.status_code}): {error_msg}") from None
             
-        json_response = response.json()
+        json_response = json.loads(body)
         if "data" in json_response:
             return json_response["data"]
         elif "message" in json_response:
@@ -83,48 +99,37 @@ class ERPNextClient:
         return json_response
 
     async def get_list(self, doctype: str, filters: list = None, fields: list = None, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Fetch a list of documents."""
-        # Hard cap the limit to prevent massive payload memory spikes or bypasses
         limit = max(1, min(limit, 1000))
-        
-        params = {
-            "limit_page_length": limit
-        }
-        if filters:
-            params["filters"] = filters
-        if fields:
-            params["fields"] = fields
+        params = {"limit_page_length": limit}
+        if filters: params["filters"] = filters
+        if fields: params["fields"] = fields
         
         doctype = sanitize_path_component(doctype, "doctype")
         return await self._request("GET", f"resource/{doctype}", params=params)
 
     async def get_doc(self, doctype: str, name: str) -> Dict[str, Any]:
-        """Fetch a single document."""
         doctype = sanitize_path_component(doctype, "doctype")
         name = sanitize_path_component(name, "name")
         return await self._request("GET", f"resource/{doctype}/{name}")
 
     async def create_doc(self, doctype: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new document."""
         payload = data.copy()
         payload["doctype"] = doctype
         doctype = sanitize_path_component(doctype, "doctype")
         return await self._request("POST", f"resource/{doctype}", data=payload)
 
     async def update_doc(self, doctype: str, name: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update an existing document."""
         doctype = sanitize_path_component(doctype, "doctype")
         name = sanitize_path_component(name, "name")
         return await self._request("PUT", f"resource/{doctype}/{name}", data=data)
 
     async def delete_doc(self, doctype: str, name: str) -> str:
-        """Delete a document."""
         doctype = sanitize_path_component(doctype, "doctype")
         name = sanitize_path_component(name, "name")
         await self._request("DELETE", f"resource/{doctype}/{name}")
         return "Deleted successfully"
 
     async def execute_method(self, method: str, kwargs: dict = None) -> Any:
-        """Execute a whitelisted python method."""
-        method = sanitize_path_component(method, "method")
+        # H5: Strict regex for methods
+        method = validate_method_path(method)
         return await self._request("POST", f"method/{method}", data=kwargs or {})

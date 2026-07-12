@@ -1,16 +1,31 @@
 services:
   erpnext-mcp:
     build: .
-    container_name: erpnext-mcp
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
+      - "127.0.0.1:${PORT:-8000}:8000"
+    volumes:
+      - ./config.json:/app/config.json:ro
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    volumes:
-      - ./config.json:/app/config.json:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - frappe_docker_default
+
+networks:
+  frappe_docker_default:
+    external: true

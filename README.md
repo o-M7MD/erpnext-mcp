@@ -1,4 +1,4 @@
-# ERPNext MCP Server (Production Ready)
+# ERPNext MCP Server
 
 A robust, asynchronous Model Context Protocol (MCP) server that securely connects LLMs to your ERPNext instance (Self-Hosted or Frappe Cloud) via its REST API.
 
@@ -15,8 +15,14 @@ A robust, asynchronous Model Context Protocol (MCP) server that securely connect
 By default, the server will **reject** any request unless it explicitly matches your configuration file.
 ```json
 {
-  "allowed_doctypes": ["Customer", "Sales Invoice", "Item", "Task"],
-  "allowed_methods": ["erpnext.projects.doctype.task.task.set_status"]
+  "readable_doctypes": ["Customer", "Sales Invoice", "Item", "Task"],
+  "writable_doctypes": ["Customer", "Task"],
+  "deletable_doctypes": [],
+  "allowed_methods": ["erpnext.projects.doctype.task.task.set_status"],
+  "mcp_tokens": [
+    "YOUR_SECURE_CLIENT_TOKEN_1",
+    "YOUR_SECURE_CLIENT_TOKEN_2"
+  ]
 }
 ```
 
@@ -61,7 +67,7 @@ If you are hosting this on a VPS (like an Oracle ARM instance) to allow external
 2. **Reverse Proxy (Caddy / Nginx):**
    You **must** place this container behind a reverse proxy. 
    - Expose the container via a domain (e.g., `mcp.extrotechs.com`).
-   - **SECURITY CRITICAL:** You must implement **Basic Authentication** or an API Gateway token check at the proxy layer (e.g., Caddy's `basicauth`). FastMCP's native SSE transport does not natively validate Bearer tokens yet. When external clients configure their LLM tools, they will provide this Basic Auth header to securely access the SSE stream.
+   - The server enforces token authentication via the `TokenAuthAndRateLimitMiddleware`. Clients must send an `Authorization: Bearer YOUR_TOKEN` header connecting to the SSE stream.
 3. **Internal vs External Routing:**
    - If deploying on the same VPS as your Frappe instance, set `ERPNEXT_URL=http://frontend:8080` (or whatever the docker-compose internal network URL is) to bypass the public internet and improve speed.
    - If connecting to an external client's Frappe Cloud instance, use their public URL.

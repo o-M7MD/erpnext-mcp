@@ -3,7 +3,6 @@ import json
 import asyncio
 import logging
 import time
-from collections import defaultdict
 from typing import Dict, Any, List
 from mcp.server.fastmcp import FastMCP
 from .client import ERPNextClient
@@ -20,11 +19,27 @@ if not os.path.exists(CONFIG_PATH):
 with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
+# C2: Backward compatibility for legacy "allowed_doctypes"
+if "allowed_doctypes" in config and not config.get("readable_doctypes"):
+    legacy_docs = config.get("allowed_doctypes", [])
+    logger.warning("Legacy 'allowed_doctypes' found in config. Mapping to read/write/delete permissions. Please update your config schema.")
+    config["readable_doctypes"] = legacy_docs
+    config["writable_doctypes"] = legacy_docs
+    config["deletable_doctypes"] = legacy_docs
+
 READABLE_DOCTYPES = set(config.get("readable_doctypes", []))
 WRITABLE_DOCTYPES = set(config.get("writable_doctypes", []))
 DELETABLE_DOCTYPES = set(config.get("deletable_doctypes", []))
 ALLOWED_METHODS = set(config.get("allowed_methods", []))
 MCP_TOKENS = set(config.get("mcp_tokens", []))
+
+# NEW-5: Schema Validation at startup
+if not READABLE_DOCTYPES and not WRITABLE_DOCTYPES:
+    logger.warning("WARNING: No doctypes are configured for read or write. All requests will be denied.")
+
+unknown_keys = set(config.keys()) - {"readable_doctypes", "writable_doctypes", "deletable_doctypes", "allowed_methods", "mcp_tokens", "allowed_doctypes"}
+if unknown_keys:
+    logger.warning(f"Unknown config keys detected (possible typo): {unknown_keys}")
 
 # Initialize FastMCP Server
 mcp = FastMCP("ERPNext")
@@ -51,6 +66,28 @@ def check_doctype_access(doctype: str, action: str):
         logger.warning(f"Rejected DELETE access to DocType: {doctype}")
         raise ValueError(f"Delete access to DocType '{doctype}' is denied.")
 
+def validate_input_fields(fields: list = None, filters: list = None):
+    # M4: Input validation to block sensitive data extraction
+    sensitive_keywords = {"password", "api_key", "api_secret", "session", "token", "hash"}
+    
+    if fields:
+        if not isinstance(fields, list):
+            raise ValueError("Fields must be a list of strings.")
+        for field in fields:
+            if not isinstance(field, str):
+                raise ValueError("Fields must be a list of strings.")
+            if any(sensitive in field.lower() for sensitive in sensitive_keywords):
+                raise ValueError(f"Access to sensitive field '{field}' is blocked by security policy.")
+                
+    if filters:
+        if not isinstance(filters, list):
+            raise ValueError("Filters must be a list.")
+        for f in filters:
+            if isinstance(f, list) and len(f) >= 2:
+                field_name = str(f[1]).lower()
+                if any(sensitive in field_name for sensitive in sensitive_keywords):
+                    raise ValueError(f"Filtering on sensitive field '{field_name}' is blocked by security policy.")
+
 @mcp.tool()
 async def erpnext_get_list(doctype: str, filters: list = None, fields: list = None, limit: int = 1000) -> str:
     """
@@ -65,6 +102,8 @@ async def erpnext_get_list(doctype: str, filters: list = None, fields: list = No
     try:
         logger.info(f"Tool call: get_list | doctype={doctype} limit={limit}")
         check_doctype_access(doctype, "READ")
+        validate_input_fields(fields=fields, filters=filters)
+        
         client = await get_client()
         data = await client.get_list(doctype, filters=filters, fields=fields, limit=limit)
         return json.dumps(data, separators=(',', ':'))
@@ -200,73 +239,101 @@ def main():
             from starlette.responses import JSONResponse
             from starlette.middleware.base import BaseHTTPMiddleware
             from starlette.middleware.cors import CORSMiddleware
+            from contextlib import asynccontextmanager
             
             app = getattr(mcp, "_app", None)
             if not app:
-                logger.warning("FastMCP internal ASGI app not found. Running native unauthenticated SSE. Rely on reverse proxy for auth!")
+                logger.warning("FastMCP internal ASGI app not found. Running native unauthenticated SSE.")
                 mcp.run(transport='sse', port=int(port))
                 return
                 
-            # H1: In-memory Rate Limiting
-            RATE_LIMIT_DICT = defaultdict(list)
+            # H1 / NEW-3: In-memory Rate Limiting (Bounded)
+            RATE_LIMIT_DICT = {}
             
             class TokenAuthAndRateLimitMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
                     if request.url.path == "/health":
                         return await call_next(request)
                     
-                    # Rate limiting: Max 120 requests per minute per IP
-                    ip = request.client.host if request.client else "127.0.0.1"
+                    # NEW-3: Use X-Forwarded-For if available
+                    forwarded = request.headers.get("X-Forwarded-For")
+                    if forwarded:
+                        ip = forwarded.split(",")[0].strip()
+                    else:
+                        ip = request.client.host if request.client else "127.0.0.1"
+                        
                     now = time.time()
-                    RATE_LIMIT_DICT[ip] = [t for t in RATE_LIMIT_DICT[ip] if now - t < 60]
-                    if len(RATE_LIMIT_DICT[ip]) >= 120:
-                        logger.warning(f"Rate limit exceeded for IP {ip}")
-                        return JSONResponse({"detail": "Rate limit exceeded (120 req/min)"}, status_code=429)
-                    RATE_LIMIT_DICT[ip].append(now)
                     
-                    # C1: Auth Fail-Closed
-                    if not MCP_TOKENS and os.environ.get("DISABLE_AUTH") != "true":
-                        logger.error("Auth is enabled but MCP_TOKENS is empty. Failing closed.")
+                    # Prevent unbounded memory growth
+                    if len(RATE_LIMIT_DICT) > 10000 and ip not in RATE_LIMIT_DICT:
+                        # Clear old entries to free memory
+                        stale_keys = [k for k, v in RATE_LIMIT_DICT.items() if not v or (now - v[-1]) > 60]
+                        for k in stale_keys:
+                            RATE_LIMIT_DICT.pop(k, None)
+                        # If still too large, reject new IPs
+                        if len(RATE_LIMIT_DICT) > 10000:
+                            return JSONResponse({"detail": "Server under heavy load"}, status_code=503)
+                            
+                    # Get or init list for IP
+                    timestamps = RATE_LIMIT_DICT.get(ip, [])
+                    timestamps = [t for t in timestamps if now - t < 60]
+                    
+                    if len(timestamps) >= 120:
+                        logger.warning(f"Rate limit exceeded for IP {ip}")
+                        RATE_LIMIT_DICT[ip] = timestamps
+                        return JSONResponse({"detail": "Rate limit exceeded (120 req/min)"}, status_code=429)
+                        
+                    timestamps.append(now)
+                    RATE_LIMIT_DICT[ip] = timestamps
+                    
+                    # C1 / NEW-1: Auth Fail-Closed. STRICT REQUIREMENT
+                    if not MCP_TOKENS:
+                        logger.error("CRITICAL: Auth is enabled but MCP_TOKENS is empty. Failing closed.")
                         return JSONResponse({"detail": "Server configuration error: No valid tokens defined."}, status_code=500)
                     
-                    if not os.environ.get("DISABLE_AUTH") == "true":
-                        auth_header = request.headers.get("Authorization", "")
-                        if not auth_header.startswith("Bearer "):
-                            return JSONResponse({"detail": "Unauthorized. Missing or invalid Bearer token prefix."}, status_code=401)
-                        token = auth_header[7:].strip()
-                        
-                        if token not in MCP_TOKENS:
-                            logger.warning(f"Unauthorized access attempt to {request.url.path} from {ip}")
-                            return JSONResponse({"detail": "Unauthorized. Invalid Bearer token."}, status_code=401)
+                    auth_header = request.headers.get("Authorization", "")
+                    if not auth_header.startswith("Bearer "):
+                        return JSONResponse({"detail": "Unauthorized. Missing or invalid Bearer token prefix."}, status_code=401)
+                    
+                    token = auth_header[7:].strip()
+                    if token not in MCP_TOKENS:
+                        logger.warning(f"Unauthorized access attempt to {request.url.path} from {ip}")
+                        return JSONResponse({"detail": "Unauthorized. Invalid Bearer token."}, status_code=401)
                     
                     return await call_next(request)
             
-            wrapper = Starlette()
+            # NEW-6: Use Lifespan context manager instead of on_event("shutdown")
+            @asynccontextmanager
+            async def lifespan(app):
+                # Startup
+                yield
+                # Shutdown
+                global _client
+                if _client:
+                    logger.info("Closing ERPNext API client gracefully...")
+                    await _client.close()
+
+            wrapper = Starlette(lifespan=lifespan)
             
-            # H2: CORS Protection
+            # Middlewares are executed in reverse order of addition.
+            # We want TokenAuth to run INNERMOST so CORS preflight OPTIONS bypasses Auth.
+            # So TokenAuth is added FIRST.
+            wrapper.add_middleware(TokenAuthAndRateLimitMiddleware)
+            
+            # NEW-4 / NEW-9: CORS runs OUTERMOST.
             wrapper.add_middleware(
                 CORSMiddleware,
-                allow_origins=["*"], # Since it's a server meant for API clients, allow all or configure via ENV
-                allow_credentials=True,
+                allow_origins=["*"], 
+                allow_credentials=False, # Must be false when origin is *
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
-            
-            wrapper.add_middleware(TokenAuthAndRateLimitMiddleware)
             
             @wrapper.route("/health")
             async def health(request):
                 return JSONResponse({"status": "ok"})
                 
             wrapper.mount("/", app)
-            
-            # M1: Graceful Shutdown
-            @wrapper.on_event("shutdown")
-            async def shutdown_event():
-                global _client
-                if _client:
-                    logger.info("Closing ERPNext API client gracefully...")
-                    await _client.close()
             
             logger.info("ASGI Token Auth Middleware, CORS, and Rate Limiter successfully injected.")
             uvicorn.run(wrapper, host="0.0.0.0", port=int(port))

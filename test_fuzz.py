@@ -15,7 +15,7 @@ async def test_fuzz():
     results = []
     
     # Ensure config has at least one allowed doctype for the next tests
-    allowed_doc = list(ALLOWED_DOCTYPES)[0] if ALLOWED_DOCTYPES else "Customer"
+    allowed_doc = list(READABLE_DOCTYPES)[0] if READABLE_DOCTYPES else "Customer"
     
     print(f"Starting dynamic fuzz tests on MCP Server tools...")
     print("-" * 50)
@@ -26,7 +26,7 @@ async def test_fuzz():
     try:
         res = await erpnext_get_doc(massive_str, "Test")
         # Should cleanly return an access denied error without crashing
-        passed = "Access to DocType" in res
+        passed = "Read access to DocType" in res or "forbidden characters" in res
         results.append(("Massive DocType String rejection", passed))
     except Exception as e:
         results.append(("Massive DocType String rejection", False))

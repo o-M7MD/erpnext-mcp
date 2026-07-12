@@ -35,7 +35,8 @@ class ERPNextClient:
         self.client = httpx.AsyncClient(
             headers=self.headers, 
             base_url=f"{self.url}/api/",
-            timeout=httpx.Timeout(30.0, connect=10.0)
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            verify=True
         )
 
     async def close(self):

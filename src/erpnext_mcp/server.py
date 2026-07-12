@@ -251,7 +251,13 @@ def main():
             from starlette.middleware.cors import CORSMiddleware
             from contextlib import asynccontextmanager
             
-            app = getattr(mcp, "_app", None)
+            # Extract the Starlette app from FastMCP
+            app = None
+            if hasattr(mcp, "_app") and getattr(mcp, "_app") is not None:
+                app = mcp._app
+            elif hasattr(mcp, "sse_app") and callable(mcp.sse_app):
+                app = mcp.sse_app()
+                
             if not app:
                 # C5: Fail fast if FastMCP ASGI app is missing
                 logger.critical("FATAL: Cannot inject auth middleware — FastMCP internal ASGI app not found. REFUSING TO START.")

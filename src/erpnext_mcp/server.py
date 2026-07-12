@@ -47,7 +47,13 @@ unknown_keys = set(config.keys()) - {"readable_doctypes", "writable_doctypes", "
 if unknown_keys:
     logger.warning(f"Unknown config keys detected (possible typo): {unknown_keys}")
 
-mcp = FastMCP("ERPNext")
+try:
+    from mcp.server.transport_security import TransportSecuritySettings
+    security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+except ImportError:
+    security = None
+
+mcp = FastMCP("ERPNext", transport_security=security) if security else FastMCP("ERPNext")
 _client = None
 _client_lock = asyncio.Lock()
 

@@ -1,0 +1,27 @@
+n8n.extrotechs.com {
+    reverse_proxy n8n:5678
+}
+almuhtarturizm.extrotechs.com {
+    reverse_proxy 172.17.0.1:8080
+}
+tenant1.extrotechs.com {
+    reverse_proxy 172.17.0.1:8080
+}
+
+whatsapp.extrotechs.com {
+    reverse_proxy 172.17.0.1:8081
+}
+
+medsky.extrotechs.com {
+    reverse_proxy 172.17.0.1:8080
+}
+
+whatsapp-portal.extrotechs.com {
+    reverse_proxy 172.17.0.1:8085
+}
+
+mcp.extrotechs.com {
+    reverse_proxy erpnext-mcp:8000
+}
+
+

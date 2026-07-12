@@ -66,11 +66,11 @@ async def get_client():
 
 def check_doctype_access(doctype: str, action: str):
     normalized = doctype.strip().lower()
-    if action == "READ" and normalized not in READABLE_DOCTYPES:
+    if action == "READ" and "*" not in READABLE_DOCTYPES and normalized not in READABLE_DOCTYPES:
         raise ValueError(f"Read access to DocType '{doctype}' is denied.")
-    elif action == "WRITE" and normalized not in WRITABLE_DOCTYPES:
+    elif action == "WRITE" and "*" not in WRITABLE_DOCTYPES and normalized not in WRITABLE_DOCTYPES:
         raise ValueError(f"Write access to DocType '{doctype}' is denied.")
-    elif action == "DELETE" and normalized not in DELETABLE_DOCTYPES:
+    elif action == "DELETE" and "*" not in DELETABLE_DOCTYPES and normalized not in DELETABLE_DOCTYPES:
         raise ValueError(f"Delete access to DocType '{doctype}' is denied.")
 
 SENSITIVE_KEYWORDS = {"password", "api_key", "api_secret", "session", "token", "hash", "secret", "owner", "_user_tags", "_comments", "_assign"}
@@ -273,7 +273,7 @@ def main():
             
             class SecurityMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
-                    if request.url.path == "/health":
+                    if request.url.path in ("/health", "/admin"):
                         return await call_next(request)
                         
                     cl = request.headers.get("Content-Length")
@@ -357,6 +357,53 @@ def main():
             @wrapper.route("/health")
             async def health(request):
                 return JSONResponse({"status": "ok"})
+                
+            @wrapper.route("/admin")
+            async def admin_ui(request):
+                from starlette.responses import HTMLResponse
+                html_path = os.path.join(os.path.dirname(__file__), "admin.html")
+                with open(html_path, "r", encoding="utf-8") as f:
+                    return HTMLResponse(f.read())
+            
+            @wrapper.route("/api/admin/config", methods=["GET"])
+            async def get_config(request):
+                return JSONResponse({
+                    "readable_doctypes": list(READABLE_DOCTYPES),
+                    "writable_doctypes": list(WRITABLE_DOCTYPES)
+                })
+                
+            @wrapper.route("/api/admin/config", methods=["POST"])
+            async def post_config(request):
+                data = await request.json()
+                read_docs = data.get("readable_doctypes", [])
+                write_docs = data.get("writable_doctypes", [])
+                
+                # Update global memory
+                global READABLE_DOCTYPES, WRITABLE_DOCTYPES
+                READABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in read_docs}
+                WRITABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in write_docs}
+                
+                # Save to disk
+                with open(CONFIG_PATH, "r") as f:
+                    current_config = json.load(f)
+                
+                current_config["readable_doctypes"] = list(READABLE_DOCTYPES)
+                current_config["writable_doctypes"] = list(WRITABLE_DOCTYPES)
+                
+                with open(CONFIG_PATH, "w") as f:
+                    json.dump(current_config, f, indent=4)
+                    
+                return JSONResponse({"status": "ok"})
+                
+            @wrapper.route("/api/admin/doctypes", methods=["GET"])
+            async def get_doctypes(request):
+                client = await get_client()
+                try:
+                    data = await client.get_list("DocType", fields=["name"], limit=5000)
+                    names = [d["name"] for d in data]
+                    return JSONResponse(names)
+                except Exception as e:
+                    return JSONResponse({"error": str(e)}, status_code=500)
                 
             wrapper.mount("/", app)
             

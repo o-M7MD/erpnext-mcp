@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Server Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(26, 32, 53, 0.7);
+            --surface-border: rgba(255, 255, 255, 0.08);
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.1), transparent 25%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin: 0;
+            background: linear-gradient(to right, #a855f7, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            letter-spacing: -0.05em;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        /* Glassmorphism Panel */
+        .panel {
+            background: var(--surface-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--surface-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Login Screen */
+        #login-view {
+            max-width: 450px;
+            margin: 4rem auto;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--surface-border);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* Dashboard View */
+        #dashboard-view {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-box {
+            flex-grow: 1;
+            max-width: 400px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--surface-border);
+            width: auto;
+        }
+        
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .doctype-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Custom Scrollbar */
+        .doctype-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        .doctype-grid::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1);
+            border-radius: 10px;
+        }
+        .doctype-grid::-webkit-scrollbar-thumb {
+            background: var(--surface-border);
+            border-radius: 10px;
+        }
+
+        .doctype-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--surface-border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .doctype-card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .doctype-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .toggles {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: auto;
+        }
+
+        /* Toggle Switch */
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .3s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--surface-color);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--surface-border);
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--danger);
+        }
+        
+        .toast.success {
+            border-left: 4px solid var(--success);
+        }
+
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>MCP Server Admin</h1>
+        <p>Zero-Trust Doctype Configuration Portal</p>
+    </div>
+
+    <!-- Login View -->
+    <div id="login-view" class="panel">
+        <form id="login-form">
+            <div class="input-group">
+                <label for="token">Bearer Token</label>
+                <input type="password" id="token" placeholder="EXTROTECHS_MCP_..." required autocomplete="off">
+            </div>
+            <button type="submit">
+                <span class="btn-text">Authenticate</span>
+                <div class="spinner"></div>
+            </button>
+        </form>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="panel">
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="search" placeholder="Search Doctypes...">
+            </div>
+            <div class="actions">
+                <button type="button" class="btn-outline" id="refresh-btn">Refresh</button>
+                <button type="button" id="save-btn" style="width: auto;">
+                    <span class="btn-text">Save Configuration</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+
+        <div class="doctype-grid" id="doctype-grid">
+            <!-- Dynamic Cards Go Here -->
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast">
+    <span id="toast-icon">✓</span>
+    <span id="toast-message">Configuration saved successfully</span>
+</div>
+
+<script>
+    let currentConfig = { readable_doctypes: [], writable_doctypes: [] };
+    let allDoctypes = [];
+    let bearerToken = localStorage.getItem('mcp_admin_token') || '';
+
+    const loginView = document.getElementById('login-view');
+    const dashboardView = document.getElementById('dashboard-view');
+    const grid = document.getElementById('doctype-grid');
+    const searchInput = document.getElementById('search');
+
+    if (bearerToken) {
+        initDashboard();
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('token').value.trim();
+        if (!input) return;
+
+        const btn = e.target.querySelector('button');
+        setLoading(btn, true);
+
+        bearerToken = input;
+        
+        try {
+            await fetchConfig();
+            localStorage.setItem('mcp_admin_token', bearerToken);
+            initDashboard();
+        } catch (err) {
+            showToast(err.message, 'error');
+            bearerToken = '';
+        } finally {
+            setLoading(btn, false);
+        }
+    });
+
+    document.getElementById('save-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        setLoading(btn, true);
+
+        // Gather state from UI
+        const readable = [];
+        const writable = [];
+
+        document.querySelectorAll('.doctype-card').forEach(card => {
+            const dt = card.dataset.doctype;
+            const canRead = card.querySelector('.read-toggle').checked;
+            const canWrite = card.querySelector('.write-toggle').checked;
+
+            if (canRead) readable.push(dt);
+            if (canWrite) writable.push(dt);
+        });
+
+        // Check for wildcards
+        const readFinal = readable.includes('*') ? ['*'] : readable;
+        const writeFinal = writable.includes('*') ? ['*'] : writable;
+
+        try {
+            const res = await fetch('/api/admin/config', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${bearerToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    readable_doctypes: readFinal,
+                    writable_doctypes: writeFinal
+                })
+            });
+
+            if (!res.ok) throw new Error('Failed to save configuration');
+            
+            showToast('Configuration updated & hot-reloaded!', 'success');
+            currentConfig.readable_doctypes = readFinal;
+            currentConfig.writable_doctypes = writeFinal;
+
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            setLoading(btn, false);
+        }
+    });
+
+    document.getElementById('refresh-btn').addEventListener('click', initDashboard);
+
+    searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        document.querySelectorAll('.doctype-card').forEach(card => {
+            const match = card.dataset.doctype.toLowerCase().includes(term);
+            card.style.display = match ? 'flex' : 'none';
+        });
+    });
+
+    async function initDashboard() {
+        loginView.style.display = 'none';
+        dashboardView.style.display = 'block';
+        grid.innerHTML = '<div style="text-align: center; width: 100%; color: var(--text-muted); padding: 2rem;">Loading environment...</div>';
+
+        try {
+            await fetchConfig();
+            await fetchDoctypes();
+            renderGrid();
+        } catch (err) {
+            showToast(err.message, 'error');
+            if (err.message.includes('Unauthorized') || err.message.includes('401')) {
+                localStorage.removeItem('mcp_admin_token');
+                bearerToken = '';
+                loginView.style.display = 'block';
+                dashboardView.style.display = 'none';
+            }
+        }
+    }
+
+    async function fetchConfig() {
+        const res = await fetch('/api/admin/config', {
+            headers: { 'Authorization': `Bearer ${bearerToken}` }
+        });
+        if (!res.ok) {
+            if (res.status === 401) throw new Error('Unauthorized. Invalid Token.');
+            throw new Error('Failed to fetch config');
+        }
+        currentConfig = await res.json();
+    }
+
+    async function fetchDoctypes() {
+        const res = await fetch('/api/admin/doctypes', {
+            headers: { 'Authorization': `Bearer ${bearerToken}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch doctypes from Frappe');
+        
+        const data = await res.json();
+        // data should be an array of strings
+        allDoctypes = data.sort();
+        
+        // Add wildcard at the very top
+        if (!allDoctypes.includes('*')) {
+            allDoctypes.unshift('*');
+        }
+        // Ensure some common ones exist just in case Frappe API fails to return them
+        ['DocType', 'User'].forEach(dt => {
+            if (!allDoctypes.includes(dt)) allDoctypes.push(dt);
+        });
+    }
+
+    function renderGrid() {
+        grid.innerHTML = '';
+        
+        const isWildcardRead = currentConfig.readable_doctypes.includes('*');
+        const isWildcardWrite = currentConfig.writable_doctypes.includes('*');
+
+        allDoctypes.forEach(dt => {
+            const isWildcardRow = dt === '*';
+            let canRead = false;
+            let canWrite = false;
+
+            if (isWildcardRow) {
+                canRead = isWildcardRead;
+                canWrite = isWildcardWrite;
+            } else {
+                // If wildcard is enabled, show as checked but disabled
+                canRead = currentConfig.readable_doctypes.includes(dt) || isWildcardRead;
+                canWrite = currentConfig.writable_doctypes.includes(dt) || isWildcardWrite;
+            }
+
+            const card = document.createElement('div');
+            card.className = 'doctype-card';
+            card.dataset.doctype = dt;
+
+            const nameDisplay = isWildcardRow ? 'WILDCARD (Allow All)' : dt;
+            const colorStyle = isWildcardRow ? 'color: #a855f7;' : '';
+
+            // If wildcard is on, lock individual toggles
+            const disableIndividual = !isWildcardRow && isWildcardRead;
+            const disableIndividualWrite = !isWildcardRow && isWildcardWrite;
+
+            card.innerHTML = \`
+                <div class="doctype-header" style="\${colorStyle}">
+                    \${nameDisplay}
+                </div>
+                <div class="toggles">
+                    <label class="toggle-group">
+                        <div class="toggle">
+                            <input type="checkbox" class="read-toggle" \${canRead ? 'checked' : ''} \${disableIndividual ? 'disabled' : ''}>
+                            <span class="slider"></span>
+                        </div>
+                        Read
+                    </label>
+                    <label class="toggle-group">
+                        <div class="toggle">
+                            <input type="checkbox" class="write-toggle" \${canWrite ? 'checked' : ''} \${disableIndividualWrite ? 'disabled' : ''}>
+                            <span class="slider"></span>
+                        </div>
+                        Write
+                    </label>
+                </div>
+            \`;
+
+            // Interaction logic
+            const readToggle = card.querySelector('.read-toggle');
+            const writeToggle = card.querySelector('.write-toggle');
+
+            if (isWildcardRow) {
+                readToggle.addEventListener('change', (e) => {
+                    if (e.target.checked) renderGridWithConfig({...currentConfig, readable_doctypes: ['*']});
+                    else renderGridWithConfig({...currentConfig, readable_doctypes: []});
+                });
+                writeToggle.addEventListener('change', (e) => {
+                    if (e.target.checked) renderGridWithConfig({...currentConfig, writable_doctypes: ['*']});
+                    else renderGridWithConfig({...currentConfig, writable_doctypes: []});
+                });
+            } else {
+                // If turning off Read, turn off Write too (since Write implies Read)
+                readToggle.addEventListener('change', (e) => {
+                    if (!e.target.checked && writeToggle.checked) {
+                        writeToggle.checked = false;
+                    }
+                });
+                // If turning on Write, turn on Read
+                writeToggle.addEventListener('change', (e) => {
+                    if (e.target.checked && !readToggle.checked) {
+                        readToggle.checked = true;
+                    }
+                });
+            }
+
+            grid.appendChild(card);
+        });
+    }
+
+    function renderGridWithConfig(tempConfig) {
+        currentConfig = tempConfig;
+        renderGrid();
+    }
+
+    function setLoading(btn, isLoading) {
+        const text = btn.querySelector('.btn-text');
+        const spinner = btn.querySelector('.spinner');
+        if (isLoading) {
+            text.style.display = 'none';
+            spinner.style.display = 'block';
+            btn.disabled = true;
+        } else {
+            text.style.display = 'block';
+            spinner.style.display = 'none';
+            btn.disabled = false;
+        }
+    }
+
+    let toastTimeout;
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        document.getElementById('toast-message').textContent = message;
+        document.getElementById('toast-icon').textContent = type === 'success' ? '✓' : '✕';
+        
+        toast.className = \`toast \${type} show\`;
+        
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+            toast.className = 'toast';
+        }, 3000);
+    }
+</script>
+
+</body>
+</html>

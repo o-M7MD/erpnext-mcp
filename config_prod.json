@@ -1,0 +1,9 @@
+{
+    "readable_doctypes": ["ToDo", "Customer", "Project", "Task"],
+    "writable_doctypes": ["ToDo", "Customer", "Project", "Task"],
+    "deletable_doctypes": [],
+    "allowed_methods": ["frappe.ping"],
+    "mcp_tokens": [
+        "EXTROTECHS_MCP_SECRET_TOKEN_2026_x"
+    ]
+}

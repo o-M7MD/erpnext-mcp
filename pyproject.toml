@@ -21,3 +21,11 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 erpnext-mcp = "erpnext_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/erpnext_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+]

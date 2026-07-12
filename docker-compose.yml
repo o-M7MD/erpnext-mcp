@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${PORT:-8000}:8000"
+      - "8000"
     volumes:
       - ./config.json:/app/config.json:ro
     env_file:
@@ -24,8 +24,11 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
+      - global-proxy
       - frappe_docker_default
 
 networks:
+  global-proxy:
+    external: true
   frappe_docker_default:
     external: true

@@ -4,11 +4,12 @@ FROM python:3.11-slim AS builder
 WORKDIR /build
 COPY pyproject.toml ./
 COPY src/ src/
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels .
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels mcp httpx uvicorn starlette sse-starlette tenacity
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels .
 
 # Stage 2: Final runtime image
 FROM python:3.11-slim
+
+ENV HOST=0.0.0.0
 
 # Create a non-root user
 RUN useradd -m -s /bin/bash mcpuser

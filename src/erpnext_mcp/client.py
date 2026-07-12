@@ -19,6 +19,8 @@ def validate_method_path(value: str) -> str:
         raise ValueError("Invalid method path: contains forbidden characters.")
     return str(value)
 
+from urllib.parse import urlparse
+
 class ERPNextClient:
     def __init__(self, url: str = None, api_key: str = None, api_secret: str = None):
         self.url = url or os.environ.get("ERPNEXT_URL")
@@ -27,6 +29,13 @@ class ERPNextClient:
         
         if not self.url or not self.api_key or not self.api_secret:
             raise ValueError("Missing ERPNext connection credentials (URL, API_KEY, API_SECRET)")
+            
+        # C8: Strict SSRF protection
+        parsed = urlparse(self.url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("ERPNEXT_URL must use http or https")
+        if parsed.hostname in ("169.254.169.254", "metadata.google.internal"):
+            raise ValueError("ERPNEXT_URL points to a cloud metadata endpoint — blocked")
             
         self.url = self.url.rstrip("/")
         
@@ -39,7 +48,7 @@ class ERPNextClient:
         self.client = httpx.AsyncClient(
             headers=self.headers, 
             base_url=f"{self.url}/api/",
-            timeout=httpx.Timeout(30.0, connect=10.0),
+            timeout=httpx.Timeout(10.0, connect=5.0),
             verify=True
         )
 
@@ -47,8 +56,8 @@ class ERPNextClient:
         await self.client.aclose()
         
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=5),
         # H2: Handle stale keep-alive connections
         retry=retry_if_exception_type((
             httpx.ConnectError, httpx.TimeoutException, 
@@ -61,7 +70,7 @@ class ERPNextClient:
         if params:
             for k, v in params.items():
                 if isinstance(v, (list, dict)):
-                    params[k] = json.dumps(v)
+                    params[k] = json.dumps(v, default=str)
             kwargs["params"] = params
         if data:
             kwargs["json"] = data
@@ -83,8 +92,12 @@ class ERPNextClient:
                 error_msg = "Unknown error"
                 try:
                     error_json = response.json()
-                    if "_server_messages" in error_json:
-                        msgs = json.loads(error_json["_server_messages"])
+                    # M9: Hard-cap server messages length
+                    raw_msgs = error_json.get("_server_messages", "")
+                    if len(raw_msgs) > 10000:
+                        error_msg = "Error response too large to parse."
+                    elif raw_msgs:
+                        msgs = json.loads(raw_msgs)
                         parsed_msgs = [json.loads(m).get("message", m) for m in msgs]
                         error_msg = " | ".join(parsed_msgs)
                 except Exception:

@@ -352,6 +352,9 @@ def main():
                     timestamps.append(now)
                     RATE_LIMIT_DICT[ip] = timestamps
                     
+                    if request.method in ("OPTIONS", "HEAD"):
+                        return await call_next(request)
+                        
                     is_admin_route = request.url.path.startswith("/api/admin/")
                     valid_tokens = ADMIN_TOKENS if is_admin_route else MCP_TOKENS
                     
@@ -361,6 +364,7 @@ def main():
                     
                     auth_header = request.headers.get("Authorization", "")
                     if not auth_header.startswith("Bearer "):
+                        logger.warning(f"Unauthorized: Missing Bearer. Path: {request.url.path}, Method: {request.method}, Headers: {dict(request.headers)}")
                         return JSONResponse({"detail": "Unauthorized. Missing or invalid Bearer token prefix."}, status_code=401)
                     
                     token = auth_header[7:].strip().encode('utf-8')
@@ -459,7 +463,7 @@ def main():
             
             host = os.environ.get("HOST", "127.0.0.1")
             # M13 & H8: Add concurrency limits and configurable host
-            uvicorn.run(wrapper, host=host, port=port, limit_concurrency=100)
+            uvicorn.run(wrapper, host=host, port=port, limit_concurrency=100, proxy_headers=True, forwarded_allow_ips="*")
             
         except ImportError:
             logger.critical("FATAL: uvicorn/starlette not found. Cannot run securely in SSE mode.")

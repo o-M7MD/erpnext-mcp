@@ -295,7 +295,7 @@ def main():
         try:
             import uvicorn
             from starlette.applications import Starlette
-            from starlette.responses import JSONResponse
+            from starlette.responses import JSONResponse, Response
             from starlette.middleware.base import BaseHTTPMiddleware
             from starlette.middleware.cors import CORSMiddleware
             from contextlib import asynccontextmanager
@@ -353,7 +353,7 @@ def main():
                     RATE_LIMIT_DICT[ip] = timestamps
                     
                     if request.method in ("OPTIONS", "HEAD"):
-                        return await call_next(request)
+                        return Response(status_code=200)
                         
                     is_admin_route = request.url.path.startswith("/api/admin/")
                     valid_tokens = ADMIN_TOKENS if is_admin_route else MCP_TOKENS

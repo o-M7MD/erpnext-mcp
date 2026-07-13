@@ -314,15 +314,21 @@ def main():
                 
             RATE_LIMIT_DICT = {}
             
-            class SecurityMiddleware(BaseHTTPMiddleware):
-                async def dispatch(self, request, call_next):
-                    if request.url.path in ("/health", "/admin"):
-                        return await call_next(request)
-                        
-                    cl = request.headers.get("Content-Length")
-                    if cl and int(cl) > 1_000_000:
-                        return JSONResponse({"detail": "Payload Too Large. Max 1MB allowed."}, status_code=413)
+            from starlette.datastructures import MutableHeaders
+            
+            class SecurityMiddleware:
+                def __init__(self, app):
+                    self.app = app
                     
+                async def __call__(self, scope, receive, send):
+                    if scope["type"] != "http":
+                        return await self.app(scope, receive, send)
+                        
+                    request = Request(scope, receive=receive)
+                    
+                    if request.url.path in ("/health", "/admin"):
+                        return await self.app(scope, receive, send)
+                        
                     client_host = request.client.host if request.client else "127.0.0.1"
                     is_private_ip = client_host.startswith(("127.", "10.", "172.", "192.168."))
                     
@@ -360,7 +366,6 @@ def main():
                         
                     is_messages_post = (request.url.path.rstrip("/") == "/messages" and request.method == "POST")
                     if is_messages_post:
-                        # FastMCP internally validates the cryptographically secure UUID4 session_id.
                         return await self.app(scope, receive, send)
                         
                     is_admin_route = request.url.path.startswith("/api/admin/")

@@ -355,6 +355,12 @@ def main():
                     if request.method in ("OPTIONS", "HEAD"):
                         return Response(status_code=200)
                         
+                    is_messages_post = (request.url.path == "/messages" and request.method == "POST")
+                    if is_messages_post:
+                        # FastMCP internally validates the cryptographically secure UUID4 session_id.
+                        # We bypass the bearer token check here to fix buggy MCP clients that drop headers on POST requests.
+                        return await call_next(request)
+                        
                     is_admin_route = request.url.path.startswith("/api/admin/")
                     valid_tokens = ADMIN_TOKENS if is_admin_route else MCP_TOKENS
                     
@@ -363,11 +369,17 @@ def main():
                         return JSONResponse({"detail": "Server configuration error: No valid tokens defined."}, status_code=500)
                     
                     auth_header = request.headers.get("Authorization", "")
-                    if not auth_header.startswith("Bearer "):
+                    token_str = ""
+                    if auth_header.startswith("Bearer "):
+                        token_str = auth_header[7:].strip()
+                    else:
+                        token_str = request.query_params.get("token", "").strip()
+                        
+                    if not token_str:
                         logger.warning(f"Unauthorized: Missing Bearer. Path: {request.url.path}, Method: {request.method}, Headers: {dict(request.headers)}")
-                        return JSONResponse({"detail": "Unauthorized. Missing or invalid Bearer token prefix."}, status_code=401)
+                        return JSONResponse({"detail": "Unauthorized. Missing or invalid token."}, status_code=401)
                     
-                    token = auth_header[7:].strip().encode('utf-8')
+                    token = token_str.encode('utf-8')
                     is_valid = False
                     for valid_token in valid_tokens:
                         if hmac.compare_digest(token, valid_token.encode('utf-8')):
@@ -376,7 +388,7 @@ def main():
                             
                     if not is_valid:
                         logger.warning(f"Unauthorized access attempt to {request.url.path} from {ip}")
-                        return JSONResponse({"detail": "Unauthorized. Invalid Bearer token."}, status_code=401)
+                        return JSONResponse({"detail": "Unauthorized. Invalid token."}, status_code=401)
                     
                     response = await call_next(request)
                     # L8: Security headers

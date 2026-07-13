@@ -315,6 +315,8 @@ def main():
             RATE_LIMIT_DICT = {}
             
             from starlette.datastructures import MutableHeaders
+            from starlette.requests import Request
+            from starlette.responses import JSONResponse
             
             class SecurityMiddleware:
                 def __init__(self, app):

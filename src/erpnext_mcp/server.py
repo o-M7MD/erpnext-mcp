@@ -335,49 +335,42 @@ def main():
                     now = time.time()
                     
                     if len(RATE_LIMIT_DICT) > 10000 and ip not in RATE_LIMIT_DICT:
-                        stale_keys = [k for k, v in RATE_LIMIT_DICT.items() if not v or (now - v[-1]) > 60]
-                        for k in stale_keys:
-                            RATE_LIMIT_DICT.pop(k, None)
-                        if len(RATE_LIMIT_DICT) > 10000:
-                            return JSONResponse({"detail": "Server under heavy load"}, status_code=503)
-                            
                     timestamps = RATE_LIMIT_DICT.get(ip, [])
                     timestamps = [t for t in timestamps if now - t < 60]
-                    
-                    if len(timestamps) >= 120:
+                    if len(timestamps) >= 1000:
                         logger.warning(f"Rate limit exceeded for IP {ip}")
-                        RATE_LIMIT_DICT[ip] = timestamps
-                        return JSONResponse({"detail": "Rate limit exceeded (120 req/min)"}, status_code=429)
+                        response = JSONResponse({"detail": "Rate limit exceeded. Try again later."}, status_code=429)
+                        return await response(scope, receive, send)
                         
                     timestamps.append(now)
                     RATE_LIMIT_DICT[ip] = timestamps
                     
                     if request.method == "HEAD":
-                        return JSONResponse({"status": "ok"})
+                        response = JSONResponse({"status": "ok"})
+                        return await response(scope, receive, send)
                     if request.method == "OPTIONS":
-                        return await call_next(request)
+                        return await self.app(scope, receive, send)
                         
-                    if request.method == "POST" and request.url.path == "/sse":
-                        # Hermes Agent incorrectly probes POST /sse. Instead of letting FastMCP throw a 405 HTTP error,
-                        # we return a clean 200 OK JSON-RPC response so the client silently drops the POST transport attempt.
-                        return JSONResponse({
+                    if request.method == "POST" and request.url.path.rstrip("/") == "/sse":
+                        response = JSONResponse({
                             "jsonrpc": "2.0",
                             "id": None,
                             "error": {"code": -32000, "message": "Please use the SSE transport."}
                         }, status_code=200)
+                        return await response(scope, receive, send)
                         
-                    is_messages_post = (request.url.path == "/messages" and request.method == "POST")
+                    is_messages_post = (request.url.path.rstrip("/") == "/messages" and request.method == "POST")
                     if is_messages_post:
                         # FastMCP internally validates the cryptographically secure UUID4 session_id.
-                        # We bypass the bearer token check here to fix buggy MCP clients that drop headers on POST requests.
-                        return await call_next(request)
+                        return await self.app(scope, receive, send)
                         
                     is_admin_route = request.url.path.startswith("/api/admin/")
                     valid_tokens = ADMIN_TOKENS if is_admin_route else MCP_TOKENS
                     
                     if not valid_tokens:
                         logger.error("CRITICAL: Token list is empty. Failing closed.")
-                        return JSONResponse({"detail": "Server configuration error: No valid tokens defined."}, status_code=500)
+                        response = JSONResponse({"detail": "Server configuration error: No valid tokens defined."}, status_code=500)
+                        return await response(scope, receive, send)
                     
                     auth_header = request.headers.get("Authorization", "")
                     token_str = ""
@@ -387,8 +380,9 @@ def main():
                         token_str = request.query_params.get("token", "").strip()
                         
                     if not token_str:
-                        logger.warning(f"Unauthorized: Missing Bearer. Path: {request.url.path}, Method: {request.method}, Headers: {dict(request.headers)}")
-                        return JSONResponse({"detail": "Unauthorized. Missing or invalid token."}, status_code=401)
+                        logger.warning(f"Unauthorized: Missing Bearer. Path: {request.url.path}, Method: {request.method}")
+                        response = JSONResponse({"detail": "Unauthorized. Missing or invalid token."}, status_code=401)
+                        return await response(scope, receive, send)
                     
                     token = token_str.encode('utf-8')
                     is_valid = False
@@ -399,12 +393,16 @@ def main():
                             
                     if not is_valid:
                         logger.warning(f"Unauthorized access attempt to {request.url.path} from {ip}")
-                        return JSONResponse({"detail": "Unauthorized. Invalid token."}, status_code=401)
+                        response = JSONResponse({"detail": "Unauthorized. Invalid token."}, status_code=401)
+                        return await response(scope, receive, send)
                     
-                    response = await call_next(request)
-                    # L8: Security headers
-                    response.headers["X-Content-Type-Options"] = "nosniff"
-                    return response
+                    async def custom_send(message):
+                        if message["type"] == "http.response.start":
+                            headers = MutableHeaders(scope=message)
+                            headers.append("X-Content-Type-Options", "nosniff")
+                        await send(message)
+                        
+                    return await self.app(scope, receive, custom_send)
             
             @asynccontextmanager
             async def lifespan(app):

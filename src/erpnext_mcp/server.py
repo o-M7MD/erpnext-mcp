@@ -334,7 +334,6 @@ def main():
                         
                     now = time.time()
                     
-                    if len(RATE_LIMIT_DICT) > 10000 and ip not in RATE_LIMIT_DICT:
                     timestamps = RATE_LIMIT_DICT.get(ip, [])
                     timestamps = [t for t in timestamps if now - t < 60]
                     if len(timestamps) >= 1000:

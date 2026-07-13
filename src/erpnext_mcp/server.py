@@ -352,8 +352,19 @@ def main():
                     timestamps.append(now)
                     RATE_LIMIT_DICT[ip] = timestamps
                     
-                    if request.method in ("OPTIONS", "HEAD"):
-                        return Response(status_code=200)
+                    if request.method == "HEAD":
+                        return JSONResponse({"status": "ok"})
+                    if request.method == "OPTIONS":
+                        return await call_next(request)
+                        
+                    if request.method == "POST" and request.url.path == "/sse":
+                        # Hermes Agent incorrectly probes POST /sse. Instead of letting FastMCP throw a 405 HTTP error,
+                        # we return a clean 200 OK JSON-RPC response so the client silently drops the POST transport attempt.
+                        return JSONResponse({
+                            "jsonrpc": "2.0",
+                            "id": None,
+                            "error": {"code": -32000, "message": "Please use the SSE transport."}
+                        }, status_code=200)
                         
                     is_messages_post = (request.url.path == "/messages" and request.method == "POST")
                     if is_messages_post:

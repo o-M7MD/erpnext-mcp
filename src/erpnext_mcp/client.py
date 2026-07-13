@@ -45,6 +45,10 @@ class ERPNextClient:
             "Content-Type": "application/json"
         }
         
+        site_name = os.environ.get("FRAPPE_SITE_NAME")
+        if site_name:
+            self.headers["Host"] = site_name
+        
         self.client = httpx.AsyncClient(
             headers=self.headers, 
             base_url=f"{self.url}/api/",

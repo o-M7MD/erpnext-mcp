@@ -415,7 +415,8 @@ def main():
             async def get_config(request):
                 return JSONResponse({
                     "readable_doctypes": list(READABLE_DOCTYPES),
-                    "writable_doctypes": list(WRITABLE_DOCTYPES)
+                    "writable_doctypes": list(WRITABLE_DOCTYPES),
+                    "deletable_doctypes": list(DELETABLE_DOCTYPES)
                 })
                 
             @wrapper.route("/api/admin/config", methods=["POST"])
@@ -423,11 +424,13 @@ def main():
                 data = await request.json()
                 read_docs = data.get("readable_doctypes", [])
                 write_docs = data.get("writable_doctypes", [])
+                delete_docs = data.get("deletable_doctypes", [])
                 
                 # Update global memory
-                global READABLE_DOCTYPES, WRITABLE_DOCTYPES
+                global READABLE_DOCTYPES, WRITABLE_DOCTYPES, DELETABLE_DOCTYPES
                 READABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in read_docs}
                 WRITABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in write_docs}
+                DELETABLE_DOCTYPES = {d.lower() if d != '*' else '*' for d in delete_docs}
                 
                 # Save to disk
                 with open(CONFIG_PATH, "r") as f:
@@ -435,6 +438,7 @@ def main():
                 
                 current_config["readable_doctypes"] = list(READABLE_DOCTYPES)
                 current_config["writable_doctypes"] = list(WRITABLE_DOCTYPES)
+                current_config["deletable_doctypes"] = list(DELETABLE_DOCTYPES)
                 
                 with open(CONFIG_PATH, "w") as f:
                     json.dump(current_config, f, indent=4)

@@ -372,7 +372,7 @@
 </div>
 
 <script>
-    let currentConfig = { readable_doctypes: [], writable_doctypes: [] };
+    let currentConfig = { readable_doctypes: [], writable_doctypes: [], deletable_doctypes: [] };
     let allDoctypes = [];
     let bearerToken = localStorage.getItem('mcp_admin_token') || '';
 
@@ -414,19 +414,23 @@
         // Gather state from UI
         const readable = [];
         const writable = [];
+        const deletable = [];
 
         document.querySelectorAll('.doctype-card').forEach(card => {
             const dt = card.dataset.doctype;
             const canRead = card.querySelector('.read-toggle').checked;
             const canWrite = card.querySelector('.write-toggle').checked;
+            const canDelete = card.querySelector('.delete-toggle').checked;
 
             if (canRead) readable.push(dt);
             if (canWrite) writable.push(dt);
+            if (canDelete) deletable.push(dt);
         });
 
         // Check for wildcards
         const readFinal = readable.includes('*') ? ['*'] : readable;
         const writeFinal = writable.includes('*') ? ['*'] : writable;
+        const deleteFinal = deletable.includes('*') ? ['*'] : deletable;
 
         try {
             const res = await fetch('/api/admin/config', {
@@ -437,7 +441,8 @@
                 },
                 body: JSON.stringify({
                     readable_doctypes: readFinal,
-                    writable_doctypes: writeFinal
+                    writable_doctypes: writeFinal,
+                    deletable_doctypes: deleteFinal
                 })
             });
 
@@ -446,6 +451,7 @@
             showToast('Configuration updated & hot-reloaded!', 'success');
             currentConfig.readable_doctypes = readFinal;
             currentConfig.writable_doctypes = writeFinal;
+            currentConfig.deletable_doctypes = deleteFinal;
 
         } catch (err) {
             showToast(err.message, 'error');
@@ -520,19 +526,23 @@
         
         const isWildcardRead = currentConfig.readable_doctypes.includes('*');
         const isWildcardWrite = currentConfig.writable_doctypes.includes('*');
+        const isWildcardDelete = (currentConfig.deletable_doctypes || []).includes('*');
 
         allDoctypes.forEach(dt => {
             const isWildcardRow = dt === '*';
             let canRead = false;
             let canWrite = false;
+            let canDelete = false;
 
             if (isWildcardRow) {
                 canRead = isWildcardRead;
                 canWrite = isWildcardWrite;
+                canDelete = isWildcardDelete;
             } else {
                 // If wildcard is enabled, show as checked but disabled
                 canRead = currentConfig.readable_doctypes.includes(dt) || isWildcardRead;
                 canWrite = currentConfig.writable_doctypes.includes(dt) || isWildcardWrite;
+                canDelete = (currentConfig.deletable_doctypes || []).includes(dt) || isWildcardDelete;
             }
 
             const card = document.createElement('div');
@@ -545,6 +555,7 @@
             // If wildcard is on, lock individual toggles
             const disableIndividual = !isWildcardRow && isWildcardRead;
             const disableIndividualWrite = !isWildcardRow && isWildcardWrite;
+            const disableIndividualDelete = !isWildcardRow && isWildcardDelete;
 
             card.innerHTML = `
                 <div class="doctype-header" style="${colorStyle}">
@@ -565,12 +576,20 @@
                         </div>
                         Write
                     </label>
+                    <label class="toggle-group">
+                        <div class="toggle">
+                            <input type="checkbox" class="delete-toggle" ${canDelete ? 'checked' : ''} ${disableIndividualDelete ? 'disabled' : ''}>
+                            <span class="slider"></span>
+                        </div>
+                        Delete
+                    </label>
                 </div>
             `;
 
             // Interaction logic
             const readToggle = card.querySelector('.read-toggle');
             const writeToggle = card.querySelector('.write-toggle');
+            const deleteToggle = card.querySelector('.delete-toggle');
 
             if (isWildcardRow) {
                 readToggle.addEventListener('change', (e) => {
@@ -581,16 +600,22 @@
                     if (e.target.checked) renderGridWithConfig({...currentConfig, writable_doctypes: ['*']});
                     else renderGridWithConfig({...currentConfig, writable_doctypes: []});
                 });
-            } else {
-                // If turning off Read, turn off Write too (since Write implies Read)
-                readToggle.addEventListener('change', (e) => {
-                    if (!e.target.checked && writeToggle.checked) {
-                        writeToggle.checked = false;
-                    }
+                deleteToggle.addEventListener('change', (e) => {
+                    if (e.target.checked) renderGridWithConfig({...currentConfig, deletable_doctypes: ['*']});
+                    else renderGridWithConfig({...currentConfig, deletable_doctypes: []});
                 });
-                // If turning on Write, turn on Read
+            } else {
+                readToggle.addEventListener('change', (e) => {
+                    if (!e.target.checked && writeToggle.checked) writeToggle.checked = false;
+                    if (!e.target.checked && deleteToggle.checked) deleteToggle.checked = false;
+                });
                 writeToggle.addEventListener('change', (e) => {
-                    if (e.target.checked && !readToggle.checked) {
+                    if (e.target.checked && !readToggle.checked) readToggle.checked = true;
+                    if (!e.target.checked && deleteToggle.checked) deleteToggle.checked = false;
+                });
+                deleteToggle.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        writeToggle.checked = true;
                         readToggle.checked = true;
                     }
                 });
